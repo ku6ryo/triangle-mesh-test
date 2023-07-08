@@ -21,7 +21,6 @@ function drawLine(ctx: CanvasRenderingContext2D, p1: Vector2, p2: Vector2, width
   ctx.stroke()
 }
 
-
 async function drawClosedPath(ctx: CanvasRenderingContext2D, points: Vector2[], width: number = 1, color: string = "red") {
   ctx.beginPath()
   ctx.moveTo(points[0].x, points[0].y)
@@ -34,22 +33,22 @@ async function drawClosedPath(ctx: CanvasRenderingContext2D, points: Vector2[], 
   ctx.stroke()
 }
 
-async function delay(ms: number) {
-  return new Promise(resolve => setTimeout(resolve, ms))
-}
-
-function randomDiff(divisions: number) {
+function randomAngleDiff(divisions: number) {
   return (Math.random() - 0.5) * Math.PI * 2 / divisions * 0.5
 }
 
-async function drawRecursive(
+/**
+ * Generate points on hexagon and draw them. According to the depth paramete, it will recursively generate more points.
+ * The child hexagon are outside of the parent hexagon.
+ */
+function drawRecursive(
   ctx: CanvasRenderingContext2D,
   center: Vector2,
   radius: number,
   divisions: number,
   startAngle: number,
   depth: number
-): Promise<Vector2[]> {
+): Vector2[] {
   if (divisions % 2 !== 0) {
     throw new Error("Divisions must be even")
   }
@@ -63,18 +62,21 @@ async function drawRecursive(
     const aPlus = angle + dAngle / 2
     const aMinus = angle - dAngle / 2
     const vAngle = new Vector2(Math.cos(angle), Math.sin(angle)).multiply(radius)
-    const vN = new Vector2(Math.cos(aMinus) + randomDiff(divisions), Math.sin(aMinus) + randomDiff(divisions)).multiply(radius).add(center)
+    const vN = new Vector2(Math.cos(aMinus) + randomAngleDiff(divisions), Math.sin(aMinus) + randomAngleDiff(divisions)).multiply(radius).add(center)
     points.push(vN)
     drawCircle(ctx, vN, 4, "#ffb900")
-    const childPoints = await drawRecursive(ctx, center.add(vAngle.multiply(2)), radius / 2, divisions, angle - Math.PI + dAngle, depth - 1)
+    const childPoints = drawRecursive(ctx, center.add(vAngle.multiply(2)), radius / 2, divisions, angle - Math.PI + dAngle, depth - 1)
     points.push(...childPoints)
-    const vP = new Vector2(Math.cos(aPlus) + randomDiff(divisions), Math.sin(aPlus) + randomDiff(divisions)).multiply(radius).add(center)
+    const vP = new Vector2(Math.cos(aPlus) + randomAngleDiff(divisions), Math.sin(aPlus) + randomAngleDiff(divisions)).multiply(radius).add(center)
     points.push(vP)
     drawCircle(ctx, vP, 4, "#ffb900")
   }
   return points
 }
 
+/**
+ * Calculate the angle between two vectors.
+ */
 function calcDiffAngle(v1: Vector2, v2: Vector2) {
   const sin = v1.normalize().cross(v2.normalize())
   const cos = v1.normalize().dot(v2.normalize())
@@ -85,12 +87,12 @@ function calcDiffAngle(v1: Vector2, v2: Vector2) {
   }
 }
 
+// Main logic starts here.
 const appContainer = document.querySelector<HTMLButtonElement>("#app")
 if (!appContainer) throw new Error("No app container found")
 appContainer.classList.add(styles.app)
 
 const canvasSize = 600
-
 const canvas = document.createElement("canvas")
 canvas.className = styles.canvas
 canvas.width = canvasSize
@@ -105,9 +107,11 @@ const radius = 80
 const divisions = 6
 
 ;(async () => {
-  const points = await drawRecursive(ctx, center, radius, divisions, 0, 3)
+  // Generate points of the base polygon.
+  const points = drawRecursive(ctx, center, radius, divisions, 0, 3)
+  // Draw outline of the base polygon.
   await drawClosedPath(ctx, points, 4, "white")
-
+  // Generate triangles from the points of the base polygon.
   const delaunay = Delaunator.from(points.map(p => [p.x, p.y]))
   const triangleIndices = delaunay.triangles
 
@@ -124,6 +128,7 @@ const divisions = 6
     return anglePT >= anglePN || (vfp.x === vft.x && vfp.y === vft.y)
   }
 
+  // Filter triangles into inside and outside.
   const insideMesh: number[][] = []
   const outsideMesh: number[][] = []
   for (let i = 0; i < triangleIndices.length; i += 3) {
@@ -140,6 +145,7 @@ const divisions = 6
     }
   }
 
+  // Draw outside triangles.
   for (const [ip1, ip2, ip3] of outsideMesh) {
     const p1 = points[ip1]
     const p2 = points[ip2]
@@ -149,6 +155,7 @@ const divisions = 6
     drawLine(ctx, p3, p1, 2, "#444")
   }
 
+  // Draw inside triangles.
   for (const [ip1, ip2, ip3] of insideMesh) {
     const p1 = points[ip1]
     const p2 = points[ip2]
